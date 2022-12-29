@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+ <title>Stellar Structure Visualizer</title>
+    
+    <style>
+        .inputs {
+            display: inline-block;
+            border: 2px outset black;
+            background-color: lightblue;
+            text-align: left;
+            float:left;
+            height:200px;
+        }
+        .outputs {
+            display: inline-block;
+            border: 2px outset black;
+            background-color: lightblue;
+            text-align: left;
+            height:200px;
+            vertical-align: middle;
+        }
+        .visualization {
+            display: inline-block;
+            background-color: black;
+            border: 2px outset black;
+            height:200px;
+            color:white;
+        }
+        .upper-right {
+            position:absolute;
+            top:0;
+            right:10px;
+        }
+        .container {
+            display:flex;
+        }
+    </style>
+
+    <!-- P5 for animations
+    <script src="https://github.com/processing/p5.js/releases/download/v1.4.2/p5.min.js"></script>   -->
+
+    <!-- Plotly for plotting, MIT license     -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script> 
+
+    
+    <!-- load variable stellarSpectra -->
+    <script src="stellarModelsMESA.js" ></script>
+
+</head>
+  
+    <body style="font-family:sans-serif; font-size:15px; width:700px; margin-left:auto; margin-right:auto;">
+
+        <div id="headerPanel" class="full-width">
+            <h3><a href="https://foothill.edu/astronomy/astrosims.html" target=_blank>AstroSims</a> > Stellar Structure Visualizer DRAFT 1</h3>
+        </div>
+        
+        <div class="container">
+            
+            <div id="starCheckboxes" class="inputs" style="width:100px">
+                Stellar mass: <br>
+                <input type="radio" id="star0_5" name="stellarMass" value="0.5 Msun" onclick="updateDisplay();">0.5 Msun <br>
+                <input type="radio" id="star1" name="stellarMass" value="1 Msun" onclick="updateDisplay();" checked>1 Msun <br>
+                <input type="radio" id="star2" name="stellarMass" value="2 Msun" onclick="updateDisplay();">2 Msun <br>
+                <input type="radio" id="star5" name="stellarMass" value="5 Msun" onclick="updateDisplay();">5 Msun <br>
+                <input type="radio" id="star10" name="stellarMass" value="10 Msun" onclick="updateDisplay();">10 Msun <br>
+<!--            </div>        
+
+            <div id="starProperty" class="inputs" style="width:100px"> -->
+                Property: <br>
+                <input type="radio" id="click_logT" name="stellarProperty" value="logT" onclick="updateDisplay();" checked>Temp. <br>
+                <input type="radio" id="click_logRho" name="stellarProperty" value="logRho" onclick="updateDisplay();">Density <br>
+                <input type="radio" id="click_eps_nuc" name="stellarProperty" value="eps_nuc" onclick="updateDisplay();">Energy <br>
+            </div> 
+            
+            <div id="starAnimation" class="visualization">
+                <canvas id="starDisplay" height="200" width="300"> </canvas>
+            </div>
+
+            <div id="propertyPlot" class="full-width" style="width:300px;height:200px;">
+            </div>
+
+            
+            <div id="infoLink" class="upper-right" onclick="popupInfo()">
+                <h3  onmouseclick="popupInfo()">&#9432;</h3>
+            </div>
+            
+            
+        </div>
+        
+
+        <script>
+            
+            class Star {
+                // setting the co-ordinates, radius and the color of a star
+                // requires: 
+                //  function thermalColor
+                //  function drawStar
+
+                constructor(x, y, m, L, r, T){
+                    this.x = x;
+                    this.y = y;
+                    this.m = m;
+                    this.L = L;
+                    this.r = r;
+                    this.T = T; 
+                    this.c = thermalColor(T, L);
+                    console.log('new star: ', this.x, this.y, this.m, this.L, this.r, this.c);
+                }
+
+                // creation of a star.
+                createStar() {
+                    noStroke();
+                    drawStar(this.x, this.y, this.r, this.c, this.L);
+                }
+            }
+            
+            
+            
+            console.log(stellarModels);
+
+            // save out 1 Msun parameters to always-plot and initial-plot variables
+            // masses are: '0.5 Msun', '1 Msun', '2 Msun', '5 Msun', '10 Msun'
+            // variables are:
+            //  .radius    (independent variable for all)
+            //  .eps_nuc
+            //  .logRho
+            //  .logT
+            //  .mass      (cumulative mass)
+            //  .pressure
+            var R0 = stellarModels['1 Msun'][0].radius;
+            var Y0 = stellarModels['1 Msun'][0].logT;
+            var Ytitle = 'logT';
+            var R1 = stellarModels['2 Msun'][0].radius;
+            var Y1 = stellarModels['2 Msun'][0].logT;
+            //console.log('radii for 1 Msun: ', R0);
+            //console.log('temperatures for 1 Msun: ', T0);
+            
+            // initialize canvas for drawing stars
+            let starCanvas = document.getElementById("starDisplay");
+            let starContext = starCanvas.getContext("2d");
+            
+            // initialize drawing variables
+            var minDispl = 0.4;
+            var maxDispl = 1;
+            var r0 = 20;
+            var L0  = (minDispl + maxDispl) / 2; 
+            var starR = [6.0 * r0, 1.0 * r0];
+            var starT = [10000,5800];
+            var starX = [50,250];
+            var starY = [100, 100];
+            var starC = ["red", "green"];
+            var starL = [1, L0]; 
+            var starG = [1, 1];
+
+            // Initialize wavelength and brightness array
+            var wavelengths = [], waveMin = 400, waveMax = 700, brightness = [];
+            for (i=waveMin; i < waveMax+1; i++) {
+                wavelengths.push(i);
+                brightness.push(1);
+            }
+
+            initializePlot();
+            drawStarsPlural();
+            updateDisplay();
+
+            
+            
+            // ADD IN CODE FOR SELECTING STAR MASS
+            
+
+            
+            // ADD IN CODE FOR SELECTING STAR PROPERTY
+            
+            
+            
+            function updateDisplay() {
+                // check which star and property to display
+                var displayStar = document.querySelector('input[name="stellarMass"]:checked').value;
+                console.log('display star: ', displayStar);
+                var displayProperty = document.querySelector('input[name="stellarProperty"]:checked').value;
+                console.log('display property: ', displayProperty);
+                
+                // update display variables
+                R0 = stellarModels['1 Msun'][0].radius;
+                Y0 = stellarModels['1 Msun'][0][displayProperty];
+                R1 = stellarModels[displayStar][0].radius;
+                Y1 = stellarModels[displayStar][0][displayProperty];
+                
+                // update drawing
+                starR[0] = R1.slice(-1)[0] / R0.slice(-1)[0] * r0;
+                console.log('star radius: ', starR[0]);
+                //starT[0] = stellarModels[displayStar][0].logT[450];
+                starT[0] = 10**stellarModels[displayStar][0].logT.slice(-1)[0];
+                console.log('star surface temperature: ', starT[0]);
+                drawStarsPlural();
+                
+                // update plot
+                Ytitle = displayProperty;
+                plotLayout.yaxis.title.text = Ytitle;
+                plotData = [{x: R0, y: Y0, name:'1 Msun'}, {x: R1, y: Y1, name:displayStar}];
+                Plotly.react( plotter, plotData, plotLayout );
+                
+            }
+            
+            function initializePlot() {
+                // initialize plot
+                plotter = document.getElementById('propertyPlot');
+                plotLayout = {
+                    margin: { t: 10, l:30, r:10, b:40 },
+                    title: {
+                        text: 'Stellar properties',
+                        font: {
+                                family: 'Calibri, monospace',
+                                size: 16,
+                                color: 'black'
+                        },
+                        x: 0.1,
+                        y: 1
+                    },
+                    xaxis: {
+                        //range: [0, 7],
+                        //fixedrange: true,
+                        title: {
+                            text: 'Distance from center (Rsun)',
+                            font: {
+                                family: 'Calibri, monospace',
+                                size: 14,
+                                color: 'black'
+                            },
+                            standoff: 5
+                        },
+                    },
+                    yaxis: {
+                        title: {
+                            text: Ytitle,
+                            font: {
+                                family: 'Calibri, monospace',
+                                size: 14,
+                                color: 'black'
+                            },
+                            standoff: 20
+                        }
+                    }
+                };
+                firstTrace = {x: R0, y: Y0};
+                secondTrace = {x: R1, y: Y1};
+                plotData = [firstTrace, secondTrace];
+                //Plotly.react( plotter, [{x: R0, y: Y0 }], plotLayout );
+                Plotly.react( plotter, plotData, plotLayout );
+            }
+            
+            function drawStarsPlural() {
+                // requires
+                //   global context starContext
+                //   globals starX, starY, starR, starC, starL
+                
+                starContext.clearRect(0,0,starCanvas.width,starCanvas.height);
+
+                // SET COLOR BASED ON 
+                for (var i = 0; i < starX.length; i++) {
+                    starC[i] = thermalColor(starT[i], starL[i]);
+                    if (starG[i] == 0) {
+                        starC[i] = "rgb(50,50,50)";
+                    }
+                    drawStar(starX[i],starY[i],starR[i],starC[i],starL[i]);
+                }   
+
+                // draw labels for model star and sun
+                starContext.fillStyle = "white";
+                starContext.font = "20px Georgia";
+                starContext.fillText("Model star", 10, 15);
+                starContext.fillText("The sun", 215, 15);
+
+            }
+
+            function drawStar(x,y,r,c, L) {
+                // requires
+                //   global starContext
+ 
+                // CHANGE TO DRAW BASED ON PLOTTED VALUE SETTING 
+                var grd = starContext.createRadialGradient(x, y, r*Math.sqrt(L)*0.9, x, y, r*L*4);
+                grd.addColorStop(0, c);
+                grd.addColorStop(1, "black");
+          
+                starContext.beginPath();
+                starContext.arc(x, y, r, 0, 2 * Math.PI, false);
+                starContext.fillStyle = grd;
+                starContext.fill();
+            }
+
+            function thermalColor(temperature, intensity = 1) {
+                // requires:
+                //  function PlanckArray
+                //  function getLineColor
+                //  global wavelengths
+                var brightness = PlanckArray(temperature, wavelengths);
+
+                var maxBrightness = Math.max(...brightness);  // ... is the spread operator
+                var rSum = 0;
+                var gSum = 0;
+                var bSum = 0;
+                var brightSum = 0;
+                
+                for (var i = 0; i < wavelengths.length; i++) {
+                    var newRGB = getLineColor(wavelengths[i], brightness[i]/maxBrightness);
+                    rSum += newRGB[0];
+                    gSum += newRGB[1];
+                    bSum += newRGB[2];
+                    brightSum += brightness[i]/maxBrightness;
+                }   
+                var brightest = Math.max(rSum, Math.max(gSum, bSum));
+                var r = rSum / brightest * 255 * intensity ;
+                var g = gSum / brightest * 255 * intensity ;
+                var b = bSum / brightest * 255 * intensity ;
+                if (maxBrightness == 0) {
+                    r = 0;
+                    g = 0;
+                    b = 0;
+                }  
+                return "rgb("+r+","+g+","+b+")";            
+            }        
+
+            function getLineColor(lambda, relativeIntensity=1) {
+                // original routine from Andrew Duffy, modified
+                // outputs a value from 0 to 255
+                
+                var redness = 0;
+                if ((lambda >= 400) && (lambda <= 500)) redness = Math.floor(160-160*(lambda-400)/100);
+                if ((lambda >= 558) && (lambda < 590)) redness = Math.floor(255-255*(590-lambda)*(590-lambda)/(32*32));
+                if ((lambda >= 590) && (lambda < 650)) redness = 255;
+                if ((lambda >= 650) && (lambda <= 700)) redness = Math.floor(255-2*(lambda-650));
+                redness = Math.floor(relativeIntensity * redness);
+ 
+                var greenness = 0;
+                if ((lambda > 460) && (lambda < 500)) greenness = Math.floor(255 - 255*(500 - lambda)*(500-lambda)/1600);
+                if ((lambda >= 500) && (lambda <=  570))    greenness = 255;
+                if ((lambda > 570) && (lambda <=  640))    greenness = Math.floor(255-255*(lambda-570)*(lambda-570)/(70*70));
+                greenness = Math.floor(relativeIntensity * greenness);
+
+                var blueness = 0;
+                if ((lambda >= 400) && (lambda < 460)) blueness = 255;
+                if ((lambda >= 460) && (lambda < 550)) blueness = Math.floor(255 - 255*(lambda-460)*(lambda-460)/(90*90));
+                blueness = Math.floor(relativeIntensity * blueness);
+ 
+                return [redness, greenness, blueness];
+            }
+            
+            function PlanckFunction(temperature, wavelength) {
+                //  CALCULATE PLANCK FUNCTION at a single wavelength
+                //  outputs W / steradian / m2 / m
+                //  divide by 1e12 to get kW / sr / m2 / nm
+                var h = 6.626e-34; // m2 kg / s
+                var c = 2.997e8; // m/s, speed of light
+                var kb = 1.38e-23; // m2kg /s2 / K  Boltzmann constant
+  
+                return ((2 * h * c*c) / 
+                        Math.pow(wavelength * 1e-9,5) / 
+                        (Math.exp( h*c / (wavelength * 1e-9 * kb * temperature)) - 1));
+            }
+            
+            function PlanckArray(T, wavelengths) {
+                var B = [];
+                for (i=0; i < wavelengths.length; i++) {
+                    B.push(PlanckFunction(T, wavelengths[i]));
+                }
+                return B;
+            }
+            
+            function popupInfo() {
+                var infoOption;
+                if (confirm("The Stellar Structure Visualizor is part of the Foothill College AstroSims project, developed by Geoff Mathews (Foothill College) in collaboration with Richard Piccioni (College of Marin).  This displays values from the MESA models (REF). \n \n Click OK to open the AstroSims homepage in a new tab to see our other simulations, as well as our listing of more than 300 other Astronomy education simulations and visualizations from authors around the world. \n \n Open https://foothill.edu/astronomy/astrosims.html in a new tab?")) {window.open("https://foothill.edu/astronomy/astrosims.html","_blank");
+          }
+      }
+
+        </script>
+        
+    </body>
+</html>    
